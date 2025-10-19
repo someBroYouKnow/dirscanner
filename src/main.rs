@@ -1,16 +1,12 @@
-// Import statements - bringing external code into our program
 use rfd::FileDialog;
-use std::fs; // "fs" = file system - lets us work with files and folders
-use std::io; // "io" = input/output - lets us read keyboard input and write to screen
+use std::fs;
+use std::io::{self, Write}; // "io" = input/output - lets us read keyboard input and write to screen
+// Write trait allows us to use flush() on stdout
 use std::path::Path; // Path - helps us work with file paths (like C:\Users\...) // From external library "rfd" - creates the file picker window
 
-// main() is the entry point - where the program starts running
 fn main() {
-    // println! is a macro (the ! means it's a macro, not a function)
-    // It prints text to the console. \n means "new line"
     println!("=== Folder Scanner ===\n");
 
-    // Open file dialog to select folder
     println!("Opening file explorer to select a folder...");
 
     // "let" declares a new variable called "folder"
@@ -99,10 +95,13 @@ fn main() {
             eprintln!("Error during scanning: {}", e);
         }
     }
+
+    println!(
+        "Done scanning, total size = {}, count = {}",
+        total_size, folder_count
+    )
 }
 
-// "fn" declares a function
-// This function takes 4 parameters:
 fn scan_directory(
     path: &Path,          // &Path = immutable reference to a Path (can read, can't modify)
     search_name: &str,    // &str = string slice (immutable reference to text)
@@ -110,7 +109,6 @@ fn scan_directory(
     folder_count: &mut usize, // usize = size type (good for counting things)
 ) -> io::Result<()> {
     // -> means "returns". io::Result<()> = either Ok(nothing) or Err(error)
-
     // ! means "not". is_dir() checks if path is a directory
     // If path is NOT a directory, return early
     if !path.is_dir() {
@@ -168,13 +166,14 @@ fn scan_directory(
                         size,
                         size as f64 / 1_048_576.0
                     );
+                } else {
+                    let _ = scan_directory(&entry_path, search_name, total_size, folder_count);
                 }
             }
 
             // Recursively scan subdirectories (function calling itself!)
             // This lets us search folders inside folders inside folders...
             // let _ = means "call this but ignore the return value"
-            let _ = scan_directory(&entry_path, search_name, total_size, folder_count);
         }
     }
 
