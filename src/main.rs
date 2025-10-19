@@ -77,8 +77,12 @@ fn main() {
     // &mut means "mutable reference" - the function can change these variables
     match scan_directory(&base_path, search_name, &mut total_size, &mut folder_count) {
         Ok(_) => {
+            // Clear the scanning line one final time before showing results
+            print!("\r{}\r", " ".repeat(100));
+            io::stdout().flush().unwrap_or(());
+
             // If scanning succeeded (Ok), the _ means we ignore the success value
-            println!("\n=== Results ===");
+            println!("=== Results ===");
             println!("Found {} folder(s) named '{}'", folder_count, search_name);
             // "as f64" converts integer to floating point (decimal number)
             // {:.2} means "show 2 decimal places"
@@ -141,6 +145,18 @@ fn scan_directory(
 
         // Check if this entry is a directory
         if entry_path.is_dir() {
+            // Display current scanning path on one line
+            // \r returns cursor to start of line (carriage return)
+            // We truncate the path to 80 chars to prevent wrapping
+            let display_path = format!("{}", path.display());
+            let truncated = if display_path.len() > 80 {
+                format!("...{}", &display_path[display_path.len() - 77..])
+            } else {
+                display_path
+            };
+            print!("\rScanning: {:<80}", truncated);
+            io::stdout().flush().unwrap_or(());
+
             // Check if this folder matches the search name
             // "if let" is a shorthand for match when we only care about one case
             // .file_name() gets just the folder name (not full path)
@@ -149,6 +165,10 @@ fn scan_directory(
                 // .to_string_lossy() converts the name to a string we can compare
                 // == checks if two things are equal
                 if folder_name.to_string_lossy() == search_name {
+                    // Clear the scanning line before printing found folder
+                    print!("\r{}\r", " ".repeat(100));
+                    io::stdout().flush().unwrap_or(());
+
                     // * is the "dereference" operator - it accesses the value behind a reference
                     // += means "add and assign" (same as: *folder_count = *folder_count + 1)
                     *folder_count += 1;
@@ -207,7 +227,6 @@ fn calculate_dir_size(path: &Path) -> u64 {
                 }
             } else if entry_path.is_dir() {
                 // If it's a directory, recursively calculate its size
-                // This function calls itself! (recursion)
                 size += calculate_dir_size(&entry_path);
             }
         }
