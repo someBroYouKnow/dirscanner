@@ -2,7 +2,7 @@ use rfd::FileDialog;
 use std::fs;
 use std::io::{self, Write}; // "io" = input/output - lets us read keyboard input and write to screen
 // Write trait allows us to use flush() on stdout
-use std::path::Path; // Path - helps us work with file paths (like C:\Users\...) // From external library "rfd" - creates the file picker window
+use std::path::{Path, PathBuf}; // Path - helps us work with file paths (like C:\Users\...) // From external library "rfd" - creates the file picker window
 
 fn main() {
     println!("=== Folder Scanner ===\n");
@@ -70,12 +70,13 @@ fn main() {
     // u64 = unsigned 64-bit integer (whole number, can't be negative)
     // mut = mutable, we'll be adding to this number
     let mut total_size: u64 = 0;
-    let mut folder_count = 0; // Type inferred as integer
+    // Vec to store all found folder paths
+    let mut found_folders: Vec<PathBuf> = Vec::new();
 
     // Call our custom function scan_directory
     // & means "reference" - we're lending the variables, not giving them away
     // &mut means "mutable reference" - the function can change these variables
-    match scan_directory(&base_path, search_name, &mut total_size, &mut folder_count) {
+    match scan_directory(&base_path, search_name, &mut total_size, &mut found_folders) {
         Ok(_) => {
             // Clear the scanning line one final time before showing results
             print!("\r{}\r", " ".repeat(100));
@@ -83,7 +84,11 @@ fn main() {
 
             // If scanning succeeded (Ok), the _ means we ignore the success value
             println!("=== Results ===");
-            println!("Found {} folder(s) named '{}'", folder_count, search_name);
+            println!(
+                "Found {} folder(s) named '{}'",
+                found_folders.len(),
+                search_name
+            );
             // "as f64" converts integer to floating point (decimal number)
             // {:.2} means "show 2 decimal places"
             // 1_048_576.0 = 1024 * 1024 (number of bytes in a megabyte)
@@ -92,6 +97,27 @@ fn main() {
                 total_size,
                 total_size as f64 / 1_048_576.0
             );
+
+            // Ask user if they want to delete the found folders
+            if !found_folders.is_empty() {
+                println!("\nDo you want to delete these folders? (yes/no):");
+
+                let mut response = String::new();
+                io::stdin()
+                    .read_line(&mut response)
+                    .expect("Failed to read input");
+
+                let response = response.trim().to_lowercase();
+
+                // Check if user confirmed deletion
+                // || means "or" - if response is "yes" OR "y"
+                if response == "yes" || response == "y" {
+                    println!("\nDeleting folders...\n");
+                    delete_folders(&found_folders);
+                } else {
+                    println!("\nDeletion cancelled.");
+                }
+            }
         }
         Err(e) => {
             // If scanning failed (Err), e contains the error
@@ -101,8 +127,9 @@ fn main() {
     }
 
     println!(
-        "Done scanning, total size = {}, count = {}",
-        total_size, folder_count
+        "\nDone! Total size scanned: {} bytes, folders found: {}",
+        total_size,
+        found_folders.len()
     )
 }
 
@@ -110,7 +137,7 @@ fn scan_directory(
     path: &Path,          // &Path = immutable reference to a Path (can read, can't modify)
     search_name: &str,    // &str = string slice (immutable reference to text)
     total_size: &mut u64, // &mut = mutable reference, we can change this value
-    folder_count: &mut usize, // usize = size type (good for counting things)
+    found_folders: &mut Vec<PathBuf>, // Vec to collect all found folder paths
 ) -> io::Result<()> {
     // -> means "returns". io::Result<()> = either Ok(nothing) or Err(error)
     // ! means "not". is_dir() checks if path is a directory
@@ -166,12 +193,9 @@ fn scan_directory(
                 // == checks if two things are equal
                 if folder_name.to_string_lossy() == search_name {
                     // Clear the scanning line before printing found folder
+                    // This removes the scanning line so "Found:" prints on a clean line
                     print!("\r{}\r", " ".repeat(100));
                     io::stdout().flush().unwrap_or(());
-
-                    // * is the "dereference" operator - it accesses the value behind a reference
-                    // += means "add and assign" (same as: *folder_count = *folder_count + 1)
-                    *folder_count += 1;
 
                     // Calculate size of this folder
                     let size = calculate_dir_size(&entry_path);
@@ -179,7 +203,13 @@ fn scan_directory(
                     // Add to running total
                     *total_size += size;
 
-                    // Print that we found a matching folder
+                    // Add this folder to our list of found folders
+                    // .clone() creates a copy of the path
+                    found_folders.push(entry_path.clone());
+
+                    // Print that we found a matching folder (println adds newline)
+                    // After this prints, the scanning line will naturally appear below it
+                    // as we continue scanning
                     println!(
                         "Found: {} (Size: {} bytes, {:.2} MB)",
                         entry_path.display(),
@@ -187,7 +217,8 @@ fn scan_directory(
                         size as f64 / 1_048_576.0
                     );
                 } else {
-                    let _ = scan_directory(&entry_path, search_name, total_size, folder_count);
+                    // Recursively scan this subdirectory
+                    let _ = scan_directory(&entry_path, search_name, total_size, found_folders);
                 }
             }
 
@@ -202,34 +233,80 @@ fn scan_directory(
 }
 
 // Function to calculate the total size of a directory and everything inside it
+// Non-recursive version using a stack
 fn calculate_dir_size(path: &Path) -> u64 {
     // Create a variable to track the size
     // mut = mutable (we'll be adding to it)
     // 0u64 = the number 0, as an unsigned 64-bit integer
     let mut size = 0u64;
 
-    // Try to read all items in this directory
-    // "if let Ok(entries) = ..." is shorthand for "if it succeeds, use the result"
-    if let Ok(entries) = fs::read_dir(path) {
-        // Loop through each entry
-        // .flatten() removes errors - if an entry can't be read, skip it
-        for entry in entries.flatten() {
-            // Get the full path of this entry
-            let entry_path = entry.path();
+    // Vec = Vector (like an array/list that can grow)
+    // We'll use this as a stack to track directories we need to process
+    // Start with the initial path
+    let mut dirs_to_process = vec![path.to_path_buf()];
 
-            // Check if this entry is a file
-            if entry_path.is_file() {
-                // Try to get the file's metadata (info about the file)
-                if let Ok(metadata) = fs::metadata(&entry_path) {
-                    // .len() gives us the file size in bytes
-                    // += adds it to our running total
-                    size += metadata.len();
+    // Keep processing while we have directories in our stack
+    // .pop() removes and returns the last item from the vector
+    while let Some(current_dir) = dirs_to_process.pop() {
+        // Try to read all items in the current directory
+        // "if let Ok(entries) = ..." is shorthand for "if it succeeds, use the result"
+        if let Ok(entries) = fs::read_dir(&current_dir) {
+            // Loop through each entry
+            // .flatten() removes errors - if an entry can't be read, skip it
+            for entry in entries.flatten() {
+                // Get the full path of this entry
+                let entry_path = entry.path();
+
+                // Check if this entry is a file
+                if entry_path.is_file() {
+                    // Try to get the file's metadata (info about the file)
+                    if let Ok(metadata) = fs::metadata(&entry_path) {
+                        // .len() gives us the file size in bytes
+                        // += adds it to our running total
+                        size += metadata.len();
+                    }
+                } else if entry_path.is_dir() {
+                    // If it's a directory, add it to our stack to process later
+                    // Instead of calling the function again (recursion),
+                    // we just add it to the list of directories to process
+                    dirs_to_process.push(entry_path);
                 }
-            } else if entry_path.is_dir() {
-                // If it's a directory, recursively calculate its size
-                size += calculate_dir_size(&entry_path);
             }
         }
     }
+
+    // Return the total size
+    // In Rust, if the last line has no semicolon, it's automatically returned
     size
+}
+
+// Function to delete a list of folders
+fn delete_folders(folders: &[PathBuf]) {
+    let mut deleted_count = 0;
+    let mut failed_count = 0;
+
+    // Iterate through each folder path
+    for folder in folders {
+        // Attempt to remove the directory and all its contents
+        // fs::remove_dir_all() recursively deletes the folder and everything inside
+        match fs::remove_dir_all(folder) {
+            Ok(_) => {
+                // Successfully deleted
+                deleted_count += 1;
+                println!("✓ Deleted: {}", folder.display());
+            }
+            Err(e) => {
+                // Failed to delete (maybe no permission, or folder in use)
+                failed_count += 1;
+                eprintln!("✗ Failed to delete {}: {}", folder.display(), e);
+            }
+        }
+    }
+
+    // Print summary
+    println!("\n=== Deletion Summary ===");
+    println!("Successfully deleted: {} folder(s)", deleted_count);
+    if failed_count > 0 {
+        println!("Failed to delete: {} folder(s)", failed_count);
+    }
 }
