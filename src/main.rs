@@ -231,8 +231,5 @@ fn calculate_dir_size(path: &Path) -> u64 {
             }
         }
     }
-
-    // Return the total size
-    // In Rust, if the last line has no semicolon, it's automatically returned
     size
 }
