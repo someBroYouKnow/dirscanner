@@ -2,12 +2,22 @@ use rfd::FileDialog;
 use std::fs;
 use std::io::{self, Write}; // "io" = input/output - lets us read keyboard input and write to screen
 // Write trait allows us to use flush() on stdout
-use std::path::{Path, PathBuf}; // Path - helps us work with file paths (like C:\Users\...) // From external library "rfd" - creates the file picker window
+use std::path::{Path, PathBuf}; // Path - helps us work with file paths (like C:\Users\...) 
+// From external library "rfd" - creates the file picker window
+
+mod learn_threads;
 
 fn main() {
     println!("=== Folder Scanner ===\n");
 
     println!("Opening file explorer to select a folder...");
+
+
+    println!("Running threads...");
+
+    // going to run threads for now
+    learn_threads::run(); 
+    return; 
 
     // "let" declares a new variable called "folder"
     // FileDialog::new() creates a new file picker dialog
