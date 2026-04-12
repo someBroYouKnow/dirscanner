@@ -1,8 +1,8 @@
-//! Threading demos: minimal spawn/join, then three independent parallel tasks with timing.
+//! Threading demos: minimal spawn/join, vector scans, then mixed blocking + CPU with four threads.
 
 use std::sync::Arc;
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 fn log(msg: impl AsRef<str>) {
     let label = thread::current()
@@ -125,9 +125,113 @@ fn three_sequential_passes(data: &[i64]) -> (i64, usize, i64) {
     (sum, evens, max)
 }
 
-/// **Iterations:** grow `n` so you see when parallelism wins vs thread overhead.
+fn fib_u128(n: u32) -> u128 {
+    let mut a = 0u128;
+    let mut b = 1u128;
+    for _ in 0..n {
+        let t = a.saturating_add(b);
+        a = b;
+        b = t;
+    }
+    a
+}
+
+/// Deterministic “pure CPU” work without allocating or walking a slice — just a hot scalar loop.
+fn scalar_mix_iterations(rounds: u32) -> u64 {
+    let mut x: u64 = 0xC0FFEE;
+    for _ in 0..rounds {
+        x = x
+            .rotate_left(13)
+            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            .wrapping_add(1);
+    }
+    x
+}
+
+/// **Four threads, no arrays:** overlap *blocking-style* waits (`sleep` ≈ disk/network) with unrelated CPU.
+/// Sequential wall time stacks every wait and every compute; parallel wall time is closer to the longest lane.
+fn four_threads_blocking_plus_cpu_demo() {
+    log("\n──────── Part 3 — four workers (no array traversal) ────────");
+    log("Each thread does a different *kind* of work: two simulated I/O waits, Fibonacci, scalar crunch.");
+    log("While one thread sleeps, the OS can run others — that is the thread story for blocking workloads.\n");
+
+    const MIX_ROUNDS: u32 = 55_000_000;
+
+    log("--- baseline: run all four jobs back-to-back on main ---");
+    let t_seq = Instant::now();
+    log("(seq) simulated disk read…");
+    thread::sleep(Duration::from_millis(220));
+    log("(seq) simulated HTTP request…");
+    thread::sleep(Duration::from_millis(280));
+    let t_fib = Instant::now();
+    let fib_v = fib_u128(80);
+    log(format!("(seq) fib(80) = {fib_v} in {:?}", t_fib.elapsed()));
+    let t_mix = Instant::now();
+    let mix_v = scalar_mix_iterations(MIX_ROUNDS);
+    log(format!("(seq) scalar mix → {mix_v} in {:?}", t_mix.elapsed()));
+    let seq_total = t_seq.elapsed();
+    log(format!("SEQUENTIAL wall-clock: {seq_total:?} (sleeps + CPU add up)\n"));
+
+    log("--- four named threads: same jobs, started together ---");
+    let t_par = Instant::now();
+
+    let h_disk = thread::Builder::new()
+        .name("sim-disk-read".into())
+        .spawn(|| {
+            log("waiting on fake disk I/O…");
+            thread::sleep(Duration::from_millis(220));
+            log("disk path unblocked");
+        })
+        .expect("spawn disk");
+
+    let h_net = thread::Builder::new()
+        .name("sim-http-get".into())
+        .spawn(|| {
+            log("waiting on fake network…");
+            thread::sleep(Duration::from_millis(280));
+            log("network path unblocked");
+        })
+        .expect("spawn net");
+
+    let h_fib = thread::Builder::new()
+        .name("cpu-fibonacci".into())
+        .spawn(move || {
+            let t0 = Instant::now();
+            let v = fib_u128(80);
+            log(format!("fib(80) = {v} (compute) in {:?}", t0.elapsed()));
+            v
+        })
+        .expect("spawn fib");
+
+    let h_mix = thread::Builder::new()
+        .name("cpu-scalar-mix".into())
+        .spawn(move || {
+            let t0 = Instant::now();
+            let v = scalar_mix_iterations(MIX_ROUNDS);
+            log(format!("scalar mix → {v} (compute) in {:?}", t0.elapsed()));
+            v
+        })
+        .expect("spawn mix");
+
+    h_disk.join().expect("disk panicked");
+    h_net.join().expect("net panicked");
+    let _fib = h_fib.join().expect("fib panicked");
+    let _mix = h_mix.join().expect("mix panicked");
+
+    let par_total = t_par.elapsed();
+    log(format!("PARALLEL wall-clock: {par_total:?} (sleeps overlap; CPU runs alongside waits if cores allow)"));
+
+    if par_total < seq_total {
+        let pct = 100.0 * (1.0 - par_total.as_secs_f64() / seq_total.as_secs_f64());
+        log(format!("→ parallel saved about {pct:.0}% wall time vs stacking the same four jobs"));
+    } else {
+        log("→ if parallel wasn’t faster, CPU work may dominate; try `cargo run --release` or raise MIX_ROUNDS");
+    }
+}
+
+/// **Iterations:** grow `n` so you see when parallelism wins vs thread overhead (two sizes only).
 pub fn run_parallelism_iterations() {
-    let sizes = [50_000_usize, 500_000, 2_000_000];
+    let sizes = [50_000_usize, 500_000];
 
     for (i, &n) in sizes.iter().enumerate() {
         log(format!(
@@ -168,10 +272,10 @@ pub fn run_parallelism_iterations() {
     }
 }
 
-/// Entry: simple sum demo, then three-task parallelism + timing loop.
+/// Entry: simple sum → vector parallelism (2 iters) → four-thread blocking/CPU mix.
 pub fn run() {
     println!("\n╔══════════════════════════════════════════════════════════╗");
-    println!("║ Rust threads: simple sum → 3 parallel tasks → iterations  ║");
+    println!("║ Rust threads: sum → 3-way scan (×2) → 4 threads (no arrays) ║");
     println!("╚══════════════════════════════════════════════════════════╝\n");
 
     // --- 1) Smallest meaningful example ---
@@ -187,6 +291,8 @@ pub fn run() {
     // --- 2) Three problems at once + repeated sizes ---
     log("Part 2 — same vector, 3 independent scans in parallel vs back-to-back");
     run_parallelism_iterations();
+
+    four_threads_blocking_plus_cpu_demo();
 
     log("Done.");
 }
