@@ -4,12 +4,37 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+/// Reset all SGR attributes (color, bold, …).
+const RESET: &str = "\x1b[0m";
+
+/// 256-color ANSI foreground per thread name (Windows Terminal, VS Code, and most modern consoles).
+fn color_for_thread(name: &str) -> &'static str {
+    match name {
+        "main" => "\x1b[38;5;255m",           // bright gray / “white”
+        "worker-sum-left" => "\x1b[38;5;204m", // pink-red
+        "worker-sum-right" => "\x1b[38;5;83m", // green
+        "task-sum" => "\x1b[38;5;45m",        // cyan
+        "task-count-evens" => "\x1b[38;5;220m", // gold
+        "task-max" => "\x1b[38;5;141m",       // violet
+        "sim-disk-read" => "\x1b[38;5;33m",   // blue
+        "sim-http-get" => "\x1b[38;5;27m",    // deeper blue
+        "cpu-fibonacci" => "\x1b[38;5;118m",  // lime
+        "cpu-scalar-mix" => "\x1b[38;5;208m", // orange
+        _ => "\x1b[38;5;245m",                // unknown thread
+    }
+}
+
 fn log(msg: impl AsRef<str>) {
     let label = thread::current()
         .name()
         .unwrap_or("main")
         .to_string();
-    println!("[{label:>20}] {}", msg.as_ref());
+    let prefix = color_for_thread(label.as_str());
+    println!(
+        "{prefix}[{label:>20}] {msg}{reset}",
+        msg = msg.as_ref(),
+        reset = RESET,
+    );
 }
 
 /// **Step 0 — absolute minimum:** split an array, two threads each sum a half, main joins and adds.
