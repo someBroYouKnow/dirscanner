@@ -1,0 +1,23 @@
+services:
+  dirscanner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Passed into the Dockerfile ARG APP_ENV. Defaults to dev when unset (debug build in image).
+        APP_ENV: ${APP_ENV:-dev}
+    image: dirscanner:local
+    environment:
+      # Available inside the container at runtime (matches build flavour for your own logic later).
+      APP_ENV: ${APP_ENV:-dev}
+    stdin_open: true
+    tty: true
+    develop:
+      watch:
+        # When these paths change, Compose rebuilds the image and recreates the service (use: docker compose up --watch).
+        - action: rebuild
+          path: ./src
+        - action: rebuild
+          path: ./Cargo.toml
+        - action: rebuild
+          path: ./Cargo.lock
