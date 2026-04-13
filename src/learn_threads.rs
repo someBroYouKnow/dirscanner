@@ -1,6 +1,6 @@
 //! Threading demos: minimal spawn/join, vector scans, then mixed blocking + CPU with four threads.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -20,6 +20,9 @@ fn color_for_thread(name: &str) -> &'static str {
         "sim-http-get" => "\x1b[38;5;27m",    // deeper blue
         "cpu-fibonacci" => "\x1b[38;5;118m",  // lime
         "cpu-scalar-mix" => "\x1b[38;5;208m", // orange
+        "race-writer-1" => "\x1b[38;5;199m",  // magenta
+        "race-writer-2" => "\x1b[38;5;39m",   // light blue
+        "race-writer-3" => "\x1b[38;5;154m",  // spring green
         _ => "\x1b[38;5;245m",                // unknown thread
     }
 }
@@ -254,6 +257,69 @@ fn four_threads_blocking_plus_cpu_demo() {
     }
 }
 
+/// Part 4: shared mutable state with 3 threads, synchronized by Mutex.
+/// This demonstrates race-condition prevention and lock contention.
+fn race_condition_handled_with_mutex_demo() {
+    log("\n──────── Part 4 — race condition handling with Mutex (3 threads) ────────");
+    log("Scenario: three workers append to the same shared journal.");
+    log("Without a lock this is a race; with Mutex each write section becomes atomic.\n");
+
+    let shared_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut handles = Vec::new();
+
+    for worker_id in 1..=3 {
+        let shared = Arc::clone(&shared_log);
+        let name = format!("race-writer-{worker_id}");
+
+        let handle = thread::Builder::new()
+            .name(name.clone())
+            .spawn(move || {
+                for step in 1..=3 {
+                    // Different preparation delays make completion order non-deterministic.
+                    let prep_ms = match worker_id {
+                        1 => 35,
+                        2 => 10,
+                        _ => 22,
+                    } * step as u64;
+                    thread::sleep(Duration::from_millis(prep_ms));
+
+                    log(format!(
+                        "step {step}: finished prep in {prep_ms}ms, now waiting to acquire lock..."
+                    ));
+
+                    let mut guard = shared.lock().expect("mutex poisoned");
+                    log(format!("step {step}: acquired lock, writing shared state"));
+
+                    guard.push(format!(
+                        "writer-{worker_id} wrote step-{step} (prep {prep_ms}ms)"
+                    ));
+
+                    // Hold lock briefly to make waiting visible.
+                    thread::sleep(Duration::from_millis(45));
+                    log(format!("step {step}: releasing lock"));
+                    drop(guard);
+                }
+            })
+            .expect("spawn race demo worker");
+
+        handles.push(handle);
+    }
+
+    for h in handles {
+        h.join().expect("race worker panicked");
+    }
+
+    let final_journal = shared_log.lock().expect("mutex poisoned");
+    log(format!(
+        "all threads joined; shared journal length = {}",
+        final_journal.len()
+    ));
+    for (i, line) in final_journal.iter().enumerate() {
+        println!("  {:>2}. {line}", i + 1);
+    }
+    log("Notice: a fast thread can reach the lock first, but must wait if another thread is inside.");
+}
+
 /// **Iterations:** grow `n` so you see when parallelism wins vs thread overhead (two sizes only).
 pub fn run_parallelism_iterations() {
     let sizes = [50_000_usize, 500_000];
@@ -318,6 +384,7 @@ pub fn run() {
     run_parallelism_iterations();
 
     four_threads_blocking_plus_cpu_demo();
+    race_condition_handled_with_mutex_demo();
 
     log("Done.");
 }
