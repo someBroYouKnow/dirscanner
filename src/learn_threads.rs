@@ -153,7 +153,11 @@ fn three_sequential_passes(data: &[i64]) -> (i64, usize, i64) {
     (sum, evens, max)
 }
 
-fn fib_u128(n: u32) -> u128 {
+fn fib_u128(n: u32) -> Option<u128> {
+    if n > 128 {
+        return None; 
+    }
+
     let mut a = 0u128;
     let mut b = 1u128;
     for _ in 0..n {
@@ -161,7 +165,7 @@ fn fib_u128(n: u32) -> u128 {
         a = b;
         b = t;
     }
-    a
+    Some(a)
 }
 
 /// Deterministic “pure CPU” work without allocating or walking a slice — just a hot scalar loop.
@@ -192,7 +196,8 @@ fn four_threads_blocking_plus_cpu_demo() {
     log("(seq) simulated HTTP request…");
     thread::sleep(Duration::from_millis(280));
     let t_fib = Instant::now();
-    let fib_v = fib_u128(80);
+    let fib_option = fib_u128(80);
+    let fib_v: u128 = fib_option.unwrap_or(0u128);
     log(format!("(seq) fib(80) = {fib_v} in {:?}", t_fib.elapsed()));
     let t_mix = Instant::now();
     let mix_v = scalar_mix_iterations(MIX_ROUNDS);
@@ -226,7 +231,8 @@ fn four_threads_blocking_plus_cpu_demo() {
         .spawn(move || {
             let t0 = Instant::now();
             let v = fib_u128(80);
-            log(format!("fib(80) = {v} (compute) in {:?}", t0.elapsed()));
+            let fib_v: u128 = v.unwrap_or(0u128);
+            log(format!("fib(80) = {fib_v} (compute) in {:?}", t0.elapsed()));
             v
         })
         .expect("spawn fib");
