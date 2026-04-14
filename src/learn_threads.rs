@@ -284,39 +284,43 @@ fn race_condition_handled_with_mutex_demo() {
             .name(name.clone())
             .spawn(move || {
                 for step in 1..=3 {
-                    // Different preparation delays make completion order non-deterministic.
                     let prep_ms = match worker_id {
                         1 => 35,
                         2 => 10,
                         _ => 22,
                     } * step as u64;
+                
                     thread::sleep(Duration::from_millis(prep_ms));
-
+                
                     log(format!(
                         "step {step}: finished prep in {prep_ms}ms, now waiting to acquire lock..."
                     ));
-
+                
                     let (turn_lock, turn_cv) = &*turn_state;
                     let mut current = turn_lock.lock().expect("turn mutex poisoned");
+                
                     while *current != worker_id {
                         current = turn_cv.wait(current).expect("turn wait poisoned");
                     }
-
+                
                     let mut guard = shared.lock().expect("mutex poisoned");
                     log(format!("step {step}: acquired lock, writing shared state"));
-
+                
                     guard.push(format!(
                         "writer-{worker_id} wrote step-{step} (prep {prep_ms}ms)"
                     ));
-
-                    // Hold lock briefly to make waiting visible.
+                
                     thread::sleep(Duration::from_millis(45));
                     log(format!("step {step}: releasing lock"));
                     drop(guard);
-
-                    *current = if worker_id == 3 { 1 } else { worker_id + 1 };
-                    turn_cv.notify_all();
                 }
+                
+                // 🔴 MOVE turn switching HERE (after all steps)
+                let (turn_lock, turn_cv) = &*turn_state;
+                let mut current = turn_lock.lock().expect("turn mutex poisoned");
+                
+                *current = worker_id + 1;
+                turn_cv.notify_all();
             })
             .expect("spawn race demo worker");
 
