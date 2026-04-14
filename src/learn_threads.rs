@@ -1,6 +1,6 @@
 //! Threading demos: minimal spawn/join, vector scans, then mixed blocking + CPU with four threads.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -271,10 +271,13 @@ fn race_condition_handled_with_mutex_demo() {
     log("Without a lock this is a race; with Mutex each write section becomes atomic.\n");
 
     let shared_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    // Turn coordinator: enforce writer order 1 -> 2 -> 3 for lock entry.
+    let turn: Arc<(Mutex<usize>, Condvar)> = Arc::new((Mutex::new(1), Condvar::new()));
     let mut handles = Vec::new();
 
     for worker_id in 1..=3 {
         let shared = Arc::clone(&shared_log);
+        let turn_state = Arc::clone(&turn);
         let name = format!("race-writer-{worker_id}");
 
         let handle = thread::Builder::new()
@@ -293,6 +296,12 @@ fn race_condition_handled_with_mutex_demo() {
                         "step {step}: finished prep in {prep_ms}ms, now waiting to acquire lock..."
                     ));
 
+                    let (turn_lock, turn_cv) = &*turn_state;
+                    let mut current = turn_lock.lock().expect("turn mutex poisoned");
+                    while *current != worker_id {
+                        current = turn_cv.wait(current).expect("turn wait poisoned");
+                    }
+
                     let mut guard = shared.lock().expect("mutex poisoned");
                     log(format!("step {step}: acquired lock, writing shared state"));
 
@@ -304,6 +313,9 @@ fn race_condition_handled_with_mutex_demo() {
                     thread::sleep(Duration::from_millis(45));
                     log(format!("step {step}: releasing lock"));
                     drop(guard);
+
+                    *current = if worker_id == 3 { 1 } else { worker_id + 1 };
+                    turn_cv.notify_all();
                 }
             })
             .expect("spawn race demo worker");
