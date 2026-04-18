@@ -1,0 +1,135 @@
+import {
+    Button,
+    HorizontalBox,
+    LineEdit,
+    ScrollView,
+    TextEdit,
+    VerticalBox,
+} from "std-widgets.slint";
+
+export component MainWindow inherits Window {
+    // Initial size (user can resize). Fixed `width`/`height` on Window locks the size.
+    preferred-width: 760px;
+    preferred-height: 560px;
+    min-width: 420px;
+    min-height: 320px;
+
+    title: "Directory Scanner";
+    default-font-family: "Segoe UI";
+    background: #1e1e2e;
+
+    in-out property <string> root_path: "";
+    in-out property <string> search_query: "";
+    in-out property <string> log_text: "";
+    in-out property <string> status_text: "Ready";
+    in-out property <string> summary_text: "";
+    in-out property <bool> busy: false;
+    in-out property <int> found-count: 0;
+
+    callback browse_clicked;
+    callback scan_clicked;
+    callback delete_clicked;
+
+    VerticalBox {
+        width: 100%;
+        height: 100%;
+        padding: 16px;
+        spacing: 12px;
+
+        HorizontalBox {
+            spacing: 8px;
+            Text {
+                text: "Root folder:";
+                color: #cdd6f4;
+                vertical-alignment: center;
+                min-width: 90px;
+            }
+
+            LineEdit {
+                horizontal-stretch: 1;
+                text <=> root_path;
+                enabled: !busy;
+            }
+
+            Button {
+                text: "Browse…";
+                enabled: !busy;
+                min-width: 96px;
+                clicked => {
+                    root.browse_clicked();
+                }
+            }
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            Text {
+                text: "Search name:";
+                color: #cdd6f4;
+                vertical-alignment: center;
+                min-width: 90px;
+            }
+
+            LineEdit {
+                horizontal-stretch: 1;
+                text <=> search_query;
+                enabled: !busy;
+                placeholder-text: "exact folder name to match";
+            }
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            Button {
+                text: "Scan";
+                enabled: !busy && root_path != "" && search_query != "";
+                min-width: 100px;
+                clicked => {
+                    root.scan_clicked();
+                }
+            }
+
+            Button {
+                text: "Delete matches";
+                enabled: !busy && root.found-count > 0;
+                min-width: 140px;
+                clicked => {
+                    root.delete_clicked();
+                }
+            }
+
+            Text {
+                text: root.status_text;
+                color: #a6e3a1;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+        }
+
+        Text {
+            text: root.summary_text;
+            color: #89b4fa;
+            font-size: 13px;
+        }
+
+        Text {
+            text: "Log:";
+            color: #bac2de;
+            font-size: 13px;
+        }
+
+        ScrollView {
+            horizontal-stretch: 1;
+            vertical-stretch: 1;
+
+            TextEdit {
+                width: 100%;
+                height: 100%;
+                text <=> log_text;
+                read-only: true;
+                enabled: true;
+                wrap: word-wrap;
+            }
+        }
+    }
+}

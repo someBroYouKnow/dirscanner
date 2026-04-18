@@ -1,4 +1,5 @@
 //! Threading demos: minimal spawn/join, vector scans, then mixed blocking + CPU with four threads.
+#![allow(dead_code)]
 
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
