@@ -7,6 +7,10 @@ on:
       - "v*.*.*"
   workflow_dispatch:
 
+permissions:
+  contents: writepermissions:
+  contents: write
+
 jobs:
   build:
     name: Build for ${{ matrix.target }}
