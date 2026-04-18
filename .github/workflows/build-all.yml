@@ -3,6 +3,8 @@ name: Multi-Platform Build
 on:
   push:
     branches: [ "main" ]
+  tags:
+      - 'v*.*.*'
   workflow_dispatch: # Allows manual triggering
 
 jobs:
@@ -56,3 +58,31 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: output/
+
+  publish:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    # Only run this job if we pushed a tag
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Display structure of downloaded files (Debug)
+        run: ls -R
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # This specifies exactly which files to grab from the build jobs
+          files: |
+            dir-scanner-windows/dir-scanner-windows.exe
+            dir-scanner-linux/dir-scanner-linux
+            dir-scanner-macos-m1/dir-scanner-macos-m1
+            dir-scanner-macos-intel/dir-scanner-macos-intel
+          # Optional: Automatically generate changelogs based on commit messages
+          generate_release_notes: true
+          # Optional: Keep it as a draft so you can edit the description before users see it
+          draft: false
