@@ -45,6 +45,12 @@ jobs:
       - name: Install macOS cross toolchain (Intel target)
         if: matrix.target == 'x86_64-apple-darwin'
         run: rustup target add x86_64-apple-darwin
+      
+      - name: Install system dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig1-dev pkg-config
 
       - name: Build Binary
         run: cargo build --release --target ${{ matrix.target }}
