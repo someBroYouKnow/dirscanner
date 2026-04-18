@@ -2,32 +2,35 @@ name: Multi-Platform Build
 
 on:
   push:
-    branches: [ "main" ]
-  tags:
-      - 'v*.*.*'
-  workflow_dispatch: # Allows manual triggering
+    branches: ["main"]
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Build for ${{ matrix.os }}
+    name: Build for ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+
     strategy:
-      # If one build fails, don't cancel the others
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: dir-scanner-linux
+
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: dir-scanner-windows.exe
+
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: dir-scanner-macos-m1 # For Silicon Macs
+            artifact_name: dir-scanner-macos-m1
+
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: dir-scanner-macos-intel # For Intel Macs
+            artifact_name: dir-scanner-macos-intel
 
     steps:
       - name: Checkout code
@@ -38,51 +41,52 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # 🔴 FIX: macOS cross-compilation needs this
+      - name: Install macOS cross toolchain (Intel target)
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: rustup target add x86_64-apple-darwin
+
       - name: Build Binary
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Prepare Artifact Path
         shell: bash
         run: |
-          # Create a clean directory for the output
           mkdir -p output
-          # Handle Windows naming (.exe) vs Unix naming
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp target/${{ matrix.target }}/release/dir-scanner.exe output/${{ matrix.artifact_name }}
-          else
-            cp target/${{ matrix.target }}/release/dir-scanner output/${{ matrix.artifact_name }}
+
+          BIN_NAME="dir-scanner"
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            BIN_NAME="dir-scanner.exe"
           fi
+
+          cp target/${{ matrix.target }}/release/$BIN_NAME output/${{ matrix.artifact_name }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: output/
+          path: output/${{ matrix.artifact_name }}
 
   publish:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    # Only run this job if we pushed a tag
     if: startsWith(github.ref, 'refs/tags/')
-    
+
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
-      - name: Display structure of downloaded files (Debug)
+      - name: Display structure (debug)
         run: ls -R
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # This specifies exactly which files to grab from the build jobs
           files: |
-            dir-scanner-windows/dir-scanner-windows.exe
+            dir-scanner-windows.exe/dir-scanner-windows.exe
             dir-scanner-linux/dir-scanner-linux
             dir-scanner-macos-m1/dir-scanner-macos-m1
             dir-scanner-macos-intel/dir-scanner-macos-intel
-          # Optional: Automatically generate changelogs based on commit messages
           generate_release_notes: true
-          # Optional: Keep it as a draft so you can edit the description before users see it
           draft: false
