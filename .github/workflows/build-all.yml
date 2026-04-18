@@ -41,11 +41,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      # 🔴 FIX: macOS cross-compilation needs this
       - name: Install macOS cross toolchain (Intel target)
         if: matrix.target == 'x86_64-apple-darwin'
         run: rustup target add x86_64-apple-darwin
-      
+
       - name: Install system dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -73,36 +72,7 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: output/${{ matrix.artifact_name }}
 
- publish:
-  name: Create GitHub Release
-  needs: build
-  runs-on: ubuntu-latest
-
-  steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-
-    - name: Display structure (debug)
-      run: ls -R
-
-    - name: Generate tag
-      id: tag
-      run: |
-        TAG_NAME="build-$(date +'%Y%m%d-%H%M%S')"
-        echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
-
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ steps.tag.outputs.tag }}
-        name: Automated Build ${{ steps.tag.outputs.tag }}
-        files: |
-          dir-scanner-windows.exe/dir-scanner-windows.exe
-          dir-scanner-linux/dir-scanner-linux
-          dir-scanner-macos-m1/dir-scanner-macos-macos-m1
-          dir-scanner-macos-intel/dir-scanner-macos-intel
-        generate_release_notes: true
-        draft: false
+  publish:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
@@ -114,9 +84,17 @@ jobs:
       - name: Display structure (debug)
         run: ls -R
 
-      - name: Upload to GitHub Release
+      - name: Generate tag
+        id: tag
+        run: |
+          TAG_NAME="build-$(date +'%Y%m%d-%H%M%S')"
+          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Automated Build ${{ steps.tag.outputs.tag }}
           files: |
             dir-scanner-windows.exe/dir-scanner-windows.exe
             dir-scanner-linux/dir-scanner-linux
