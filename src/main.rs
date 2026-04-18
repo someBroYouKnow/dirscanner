@@ -1,3 +1,6 @@
+// GUI-only on Windows: no extra console when double-clicking the `.exe`.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod learn_threads;
 mod scanner;
 
