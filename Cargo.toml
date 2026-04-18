@@ -2,6 +2,11 @@
 name = "dir-scanner"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 
 [dependencies]
 rfd = "0.15"
+slint = "1.16"
+
+[build-dependencies]
+slint-build = "1.16"
