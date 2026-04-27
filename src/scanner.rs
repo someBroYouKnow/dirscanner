@@ -52,6 +52,9 @@ fn scan_directory_inner(
     let entries = match fs::read_dir(path) {
         Ok(entries) => entries,
         Err(e) => {
+            if e.kind() == io::ErrorKind::PermissionDenied {
+                return Ok(());
+            }
             on_progress(ScanProgress::Warning(format!(
                 "Cannot read directory {}: {}",
                 path.display(),
